@@ -1,0 +1,175 @@
+# coding: utf-8
+require 'fileutils'
+require 'spec/autorun'
+require "coverage.so"
+
+if ARGV.include? '-h' or ARGV.include? '--help'
+  puts 'execute rcoverage from root application and create .rcoverage file, example:'
+  puts '--lib app/models/**/*.rb'
+  puts '--spec spec/models/**/*_spec.rb'
+  exit
+end
+
+unless File.exists? '.rcoverage'
+  puts 'file .rcoverage not found'
+  puts 'create file .rcoverage from root application, example:'
+  puts '--lib app/models/**/*.rb'
+  puts '--spec spec/models/**/*_spec.rb'
+  exit
+end
+
+libs = Array.new
+File.open('.rcoverage').each do |line|
+  if line.strip.start_with? '--lib'
+    line_libs = line.split(' ')
+    line_libs.delete('--lib')
+    line_libs.each{|line_lib| libs.concat(Dir.glob(line_lib))}
+  end
+
+  if line.strip.start_with? '--spec'
+    ARGV.clear
+    line_specs = line.split(' ')
+    line_specs.delete('--spec')
+    line_specs.each{|line_spec| ARGV.concat(Dir.glob(line_spec))}
+  end
+end
+
+Coverage.start
+@green = 0.0
+@red   = 0.0
+
+::Spec::Runner::CommandLine.run
+
+puts "\ncreate coverage..."
+if File.exists? "coverage"
+  FileUtils.rm_rf "coverage"
+  Dir.mkdir "coverage" 
+end
+
+result  = Coverage.result 
+
+statics = Hash.new
+libs.each do |file_cove|
+  file_expand = File.expand_path(file_cove)
+  coverage = result[file_expand]
+  if coverage.nil?
+    statics[file_cove] = 0.0
+  else
+    green = coverage.compact.reject{|v| v.zero? }.size
+    @green += green
+    red   = coverage.compact.select{|v| v.zero? }.size
+    @red   += red
+    cov   = (100 * green).to_f / (green + red).to_f 
+    statics[file_cove] = cov
+  end
+  lines = File.readlines(file_expand)
+  buffer = %{
+  <html>
+    <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=utf-8" >
+        <style type="text/css">
+            .main {
+              font : 10pt verdana;
+              background: white;
+              width: 65%;
+            }
+            .diff {
+              font-family : monaco, courier new ;
+              font-size: 10pt ;
+              font-style: bold;
+            }
+            .main h3 {
+              margin: 15px 0px 5px 0px;
+            }
+            .comment {
+              border: 1px solid #dddddd;
+              padding: 5px;
+            }
+            .files {
+              border: 1px solid #dddddd;
+              padding: 5px;
+              background: #eeeeff;
+            }
+        </style>
+    </head>
+    <body>
+    <center>
+    <p class='main' align='right'><a href='index.html'>voltar</a></p>
+    <table cellspacing='0' cellpadding='0' class='main'>
+  }
+  lines.each_with_index do |line, index|
+    color = 
+      if (coverage.nil? or coverage[index] == 0)
+        "#ffd4d4"
+      elsif coverage[index].to_i > 0
+        "#d4dbff"
+      else
+        "#ffffff"
+      end
+    times = (coverage.nil?) ? nil : coverage[index]
+    buffer << "<tr bgcolor='#{color}'><td>#{(index+1).to_s.rjust(3).gsub(' ', '&nbsp;')}&nbsp;</td><td>#{line.gsub(' ', '&nbsp;')}</td><td align='right'>&nbsp;&nbsp;&nbsp;#{times.to_s.rjust(3).gsub(' ', '&nbsp;')}&nbsp;</td></tr>"
+  end
+  buffer << "<tr><td></td><td><b>COVERAGE</b></td><td>#{'%.2f' % statics[file_cove]}%&nbsp;</td></tr>"
+  buffer << "</table></center>"
+  buffer << "</body>"
+  buffer << "</html>"
+  file_name = file_cove.gsub('/', '-').gsub('.rb', '.html')
+
+  File.open("coverage/#{file_name}", "w+") do |f|
+    #puts "coverage/#{file_name}"
+    f.puts buffer
+  end
+  buffer = ""
+
+  @total = 0
+  index_html = %{
+  <html>
+    <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=utf-8" >
+        <style type="text/css">
+            .main {
+              font : 10pt verdana;
+              background: white;
+              width: 65%;
+            }
+            .diff {
+              font-family : monaco, courier new ;
+              font-size: 10pt ;
+              font-style: bold;
+            }
+            .main h3 {
+              margin: 15px 0px 5px 0px;
+            }
+            .comment {
+              border: 1px solid #dddddd;
+              padding: 5px;
+            }
+            .files {
+              border: 1px solid #dddddd;
+              padding: 5px;
+              background: #eeeeff;
+            }
+        </style>
+    </head>
+    <body>
+    <center>
+    <table cellspacing='0' cellpadding='0' class='main'>
+  }
+  libs.sort.each_with_index do |file_cove, index|
+    color = (statics[file_cove].to_f) >= 100 ? "#d4dbff" : "#ffd4d4"
+    index_html << "<tr bgcolor='#{color}'><td align='right'>#{(index+1).to_s.rjust(3).gsub(' ', '&nbsp;')}&nbsp;</td><td></td><td><a href='#{file_cove.gsub('/', '-').gsub('.rb', '.html')}'>#{file_cove}</a></td><td align='right'>&nbsp;&nbsp;&nbsp;#{statics[file_cove].to_f.round(2)}%&nbsp;</td></tr>\n"
+    #@total += statics[file_cove].to_f
+  end 
+  #@coverage = (statics.values.inject(0.0){|total, value| total + value} / statics.size).round(2) #((100 * @green) / (@green + @red)) #.round(2) #/ libs.size.to_f
+  #@coverage = ((100 * @green) / (@green + @red)).to_f.round(2) #/ libs.size.to_f
+  @coverage = ((100 * @green) / (@green + @red))
+
+  index_html << "<tr><td></td><td></td><td><b>COVERAGE</b> (#{Time.now.strftime('%d/%m/%Y %H:%M')})</td><td align='right'>&nbsp;&nbsp;&nbsp;#{'%.2f' % @coverage}%&nbsp;</td></tr>\n"
+  index_html << "<tr height='10px'><td>&nbsp;</td><td></td><td></td><td></td></tr>\n"
+  index_html << "</table> </center>\n"
+ 
+  File.open("coverage/index.html", "w+") do |file|
+    file.puts index_html
+  end
+end
+puts "\n\nCOVERAGE #{'%.2f' % @coverage}%"
