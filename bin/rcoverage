@@ -43,8 +43,8 @@ Coverage.start
 puts "\ncreate coverage..."
 if File.exists? "coverage"
   FileUtils.rm_rf "coverage"
-  Dir.mkdir "coverage" 
 end
+Dir.mkdir "coverage" 
 
 result  = Coverage.result 
 
