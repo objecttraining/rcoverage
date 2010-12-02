@@ -1,7 +1,7 @@
 Gem::Specification.new do |s|
   s.platform = Gem::Platform::RUBY
   s.name = 'rcoverage'
-  s.version = '0.1.0'
+  s.version = '0.1.1'
   s.summary = 'coverage tool for ruby 1.9 based in extension by Yusuke Endoh'
   s.description = 'RCoverage is a  code coverage tool for ruby based in  extension by Yusuke Endoh. The target is to create a coverage tool to run in small and big projects.'
   s.extensions = ["ext/coverage/extconf.rb"]
